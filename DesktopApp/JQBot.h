@@ -4,12 +4,11 @@
 #define JQ_BOT_H
 
 #include "JQMisc.h"
+#include "JQLeg.h" 
+#include "JQServo.h"
 
 class JQLeg;
 class JQServo;
-
-enum JQLegID;
-enum JQServoID;
 
 
 

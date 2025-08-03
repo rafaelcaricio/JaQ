@@ -91,8 +91,14 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 
 	# configure to use FLTK as the GUI
 	set(FLTK_SKIP_OPENGL true)
-	set(FLTK_FLUID_EXECUTABLE /usr/local/bin/fluid)
-	find_package(FLTK REQUIRED NO_MODULE)
+	set(FLTK_FLUID_EXECUTABLE /opt/homebrew/bin/fluid)
+	
+	# Use fltk-config for finding FLTK on macOS with Homebrew
+	execute_process(COMMAND fltk-config --cxxflags OUTPUT_VARIABLE FLTK_CXXFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+	execute_process(COMMAND fltk-config --ldflags OUTPUT_VARIABLE FLTK_LDFLAGS OUTPUT_STRIP_TRAILING_WHITESPACE)
+	
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLTK_CXXFLAGS}")
+	set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLTK_LDFLAGS}")
 
 	build_with_fluid(JaqUI .)
 
@@ -114,6 +120,13 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 		${sources}
 	)
 
+	# create the servo diagnostics CLI tool
+	add_executable(servo_diagnostics
+		servo_diagnostics.cpp
+		SCServo.cpp
+		SCSerial.darwin.cpp
+	)
+
 	# how to compile and link
 	target_compile_options(Jaq PUBLIC -Wall)
 	target_compile_definitions(Jaq PRIVATE TARGET_UI_FLTK=1 NO_PORT_AUDIO NO_X11 TARGET_OS_OPENSTEP=1 TARGET_OS_MAC=1 NS_BLOCK_ASSERTIONS=1)
@@ -124,12 +137,20 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 		"-framework AppKit"
 		"-framework Cocoa"
 	)
-	set_target_properties(Jaq PROPERTIES
-		#MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Resources/macOS/Info.plist.in"
+
+	# configure servo diagnostics tool
+	target_compile_options(servo_diagnostics PUBLIC -Wall)
+	target_compile_definitions(servo_diagnostics PRIVATE TARGET_OS_MAC=1)
+	target_link_libraries(servo_diagnostics
+		pthread
+		"-framework CoreFoundation"
 	)
-    set_target_properties(Jaq PROPERTIES
-        #CPACK_BUNDLE_APPLE_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/macOS/EntiXXXtlements.plist"
-    )
+	#set_target_properties(Jaq PROPERTIES
+	#	MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Resources/macOS/Info.plist.in"
+	#)
+    #set_target_properties(Jaq PROPERTIES
+    #    CPACK_BUNDLE_APPLE_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/Resources/macOS/EntiXXXtlements.plist"
+    #)
 
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 
@@ -237,7 +258,7 @@ if (${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 		COMMAND ${CMAKE_COMMAND} -E tar "cfv" "/Users/matt/${EINSTEIN_DIST_DIR}/MacOS/Einstein.MacOS.${CMAKE_PROJECT_VERSION}.zip" --format=zip -- "Einstein.app"
 		WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 	)
-    add_dependencies(dist Einstein)
+    add_dependencies(dist Jaq)
 
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 
@@ -247,7 +268,7 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 		COMMAND ${CMAKE_COMMAND} -E tar "cfv" "/media/psf/Home/${EINSTEIN_DIST_DIR}/Linux/Einstein.Linux.${CMAKE_PROJECT_VERSION}.zip" --format=zip -- "Einstein"
 		WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
 	)
-    add_dependencies(dist Einstein)
+    add_dependencies(dist Jaq)
 
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
 

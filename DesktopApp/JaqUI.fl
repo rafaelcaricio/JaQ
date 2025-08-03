@@ -11,7 +11,7 @@ decl {\#include "JQServo.h"} {public global
 decl {\#include "JQLeg.h"} {public global
 }
 
-decl {\#include <FL/Fl_Simple_Terminal.H>} {public global
+decl {\#include <FL/Fl_Text_Display.H>} {public global
 }
 
 Function {createMainWindow()} {open
@@ -41,7 +41,6 @@ Function {createMainWindow()} {open
     }
     Fl_Text_Display wTerminal {
       xywh {5 700 635 75} color 32 selection_color 10 labelfont 5 labelsize 11 textfont 5 textsize 11 textcolor 2
-      class Fl_Simple_Terminal
     }
     Fl_Button {} {
       label Power

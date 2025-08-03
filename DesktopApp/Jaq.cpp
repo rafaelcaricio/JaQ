@@ -39,9 +39,14 @@
 
 #include <FL/Fl_Widget.H>
 #include <FL/Fl_Button.H>
-#include <FL/Fl_Simple_Terminal.h>
+#include <FL/Fl_Text_Display.H>
 #include <FL/Fl_Preferences.H>
-#include <FL/fl_ask.h>
+#include <FL/fl_ask.H>
+#include <FL/Fl_Text_Buffer.H>
+#include <unistd.h>
+#include <cstring>
+#include <string>
+#include <iostream>
 
 using namespace std;
 
@@ -50,6 +55,21 @@ SCServo sc;
 
 int gAppWindowX = 0x7fffffff;
 int gAppWindowY = 0x7fffffff;
+
+// Terminal logging
+Fl_Text_Buffer* terminalBuffer = nullptr;
+
+void logToTerminal(const std::string& message) {
+    if (terminalBuffer && wTerminal) {
+        std::string timestamped = message + "\n";
+        terminalBuffer->append(timestamped.c_str());
+        // Auto-scroll to bottom
+        wTerminal->scroll(terminalBuffer->count_lines(0, terminalBuffer->length()), 0);
+        Fl::check(); // Process GUI events
+    }
+    // Also output to console
+    std::cout << message << std::endl;
+}
 
 
 // ---- Preferences -----------------------------------------------------------
@@ -126,56 +146,121 @@ void quitCB(Fl_Widget *w, void*)
 
 void openComCB(Fl_Button*, void*)
 {
+    const char* portName = wComName->value();
+    logToTerminal("\n=== OPENING SERIAL CONNECTION ===");
+    logToTerminal(std::string("[GUI] Attempting to open port: ") + portName);
+    
+    if (strlen(portName) == 0) {
+        logToTerminal("[GUI ERROR] No port name specified!");
+        return;
+    }
+    
     sc.End = 0;
-    int ret = sc.open(wComName->value());
-    char buf[32];
-    sprintf(buf, "OpenCom: %d\n", ret);
-    wTerminal->append(buf);
-    ret = sc.Ping(1);
-    sprintf(buf, "Ping 1: %d\n", ret);
-    wTerminal->append(buf);
-//    ret = sc.Ping(100);
-//    sprintf(buf, "Ping 100: %d\n", ret);
-//    wTerminal->append(buf);
-    Sleep(100);
-    testComCB(nullptr, nullptr);
-    Sleep(100);
-    servosPowerOnCB(nullptr, nullptr);
+    int ret = sc.open(portName);
+    
+    if (ret > 0) {
+        logToTerminal("[GUI] Serial port opened successfully");
+        
+        // Test initial communication
+        logToTerminal("[GUI] Testing servo communication...");
+        ret = sc.Ping(1);
+        
+        if (ret == 1) {
+            logToTerminal("[GUI] SUCCESS: Servo ID 1 responded to ping");
+        } else {
+            logToTerminal("[GUI] WARNING: Servo ID 1 did not respond to ping");
+        }
+        
+        usleep(100000);
+        logToTerminal("[GUI] Running communication test...");
+        testComCB(nullptr, nullptr);
+        usleep(100000);
+        
+        logToTerminal("[GUI] Enabling servo power...");
+        servosPowerOnCB(nullptr, nullptr);
+        
+    } else {
+        logToTerminal(std::string("[GUI ERROR] Failed to open serial port: ") + portName);
+        logToTerminal("[GUI] Check that:");
+        logToTerminal("  - Port exists and is accessible");
+        logToTerminal("  - You have permission to access the port");
+        logToTerminal("  - Port is not in use by another application");
+        logToTerminal("  - Servo hardware is connected and powered");
+    }
 }
 
 void servosPowerOnCB(Fl_Button*, void*)
 {
-    for (int i = 1; i <= 12; i++) {
-        sc.EnableTorque(i, 1);
+    if (!sc.isOpen()) {
+        std::cout << "[GUI ERROR] Cannot enable servos - serial port not open" << std::endl;
+        return;
     }
+    
+    std::cout << "[GUI] Enabling torque for servos 1-12..." << std::endl;
+    int successCount = 0;
+    
+    for (int i = 1; i <= 12; i++) {
+        int result = sc.EnableTorque(i, 1);
+        if (result == 1) {
+            successCount++;
+            std::cout << "[GUI] Servo " << i << ": Torque enabled" << std::endl;
+        } else {
+            std::cout << "[GUI] Servo " << i << ": Failed to enable torque" << std::endl;
+        }
+    }
+    
+    std::cout << "[GUI] Torque enable complete: " << successCount << "/12 servos responded" << std::endl;
 }
 
 void servosPowerOffCB(Fl_Button*, void*)
 {
-    for (int i = 1; i <= 12; i++) {
-        sc.EnableTorque(i, 0);
+    if (!sc.isOpen()) {
+        std::cout << "[GUI ERROR] Cannot disable servos - serial port not open" << std::endl;
+        return;
     }
+    
+    std::cout << "[GUI] Disabling torque for servos 1-12..." << std::endl;
+    int successCount = 0;
+    
+    for (int i = 1; i <= 12; i++) {
+        int result = sc.EnableTorque(i, 0);
+        if (result == 1) {
+            successCount++;
+            std::cout << "[GUI] Servo " << i << ": Torque disabled" << std::endl;
+        } else {
+            std::cout << "[GUI] Servo " << i << ": Failed to disable torque" << std::endl;
+        }
+    }
+    
+    std::cout << "[GUI] Torque disable complete: " << successCount << "/12 servos responded" << std::endl;
 }
 
 void testComCB(Fl_Button*, void*)
 {
-    if (!sc.isOpen())
+    if (!sc.isOpen()) {
+        std::cout << "[GUI ERROR] Cannot test communication - serial port not open" << std::endl;
         return;
-#if 0
-    sc.EnableTorque(1, 1);
-    Sleep(10);
-    sc.writeWord(1, 42, 1000);
-    Sleep(1000);
-    sc.writeWord(1, 42, 2000);
-#endif
+    }
+    
+    std::cout << "\n=== TESTING SERVO COMMUNICATION ===" << std::endl;
+    int responseCount = 0;
+    
     // read all servo positions and fill the corresponding sliders with that value
     for (int i = 0; i < 12; i++) {
         JQServo& servo = gBot.servo((JQServoID)i);
+        std::cout << "[GUI] Reading position from servo " << (i+1) << "..." << std::endl;
+        
         int pos = servo.requestAngle();
         if (pos != -1) {
             servo.setAngleRaw(pos, false);
+            responseCount++;
+            std::cout << "[GUI] Servo " << (i+1) << ": Position = " << pos << std::endl;
+        } else {
+            std::cout << "[GUI] Servo " << (i+1) << ": No response or error" << std::endl;
         }
     }
+
+    std::cout << "[GUI] Communication test complete: " << responseCount << "/12 servos responded" << std::endl;
 
     // update all sliders based on the values read from the servos
     for (int i = 0; i < 4; i++) {
@@ -184,14 +269,22 @@ void testComCB(Fl_Button*, void*)
         updateLegAngleUI(&leg);
         updateLegPositionUI(&leg);
     }
+    
+    std::cout << "[GUI] UI updated with servo positions" << std::endl;
 }
 
 void closeComCB(Fl_Button*, void*)
 {
     if (sc.isOpen()) {
+        std::cout << "\n=== CLOSING SERIAL CONNECTION ===" << std::endl;
+        std::cout << "[GUI] Disabling all servos before closing..." << std::endl;
         servosPowerOffCB(nullptr, nullptr);
-        Sleep(100);
+        usleep(100000);
+        std::cout << "[GUI] Closing serial port..." << std::endl;
         sc.close();
+        std::cout << "[GUI] Serial connection closed" << std::endl;
+    } else {
+        std::cout << "[GUI] Serial port already closed" << std::endl;
     }
 }
 
@@ -272,7 +365,6 @@ void setPositionCB(Fl_Value_Slider* w, long ix)
 void setAllZCB(Fl_Value_Slider* w, void*)
 {
     double z = w->value();
-    uint32_t t0 = GetTickCount();
     wPosition[2]->value(z);
     wPosition[2]->do_callback();
     wPosition[5]->value(z);
@@ -281,8 +373,6 @@ void setAllZCB(Fl_Value_Slider* w, void*)
     wPosition[8]->do_callback();
     wPosition[11]->value(z);
     wPosition[11]->do_callback();
-    uint32_t t1 = GetTickCount();
-    wTerminal->printf("That took %dms.\n", t1 - t0);
 #if 0
     int ix;
     for (ix = 1; ix <= 4; ix++) {
@@ -311,6 +401,10 @@ int main(int argc, char** argv)
     Fl_Window* win = createMainWindow();
     if (gAppWindowX != 0x7fffffff) win->position(gAppWindowX, gAppWindowY);
 
+    // Initialize terminal buffer
+    terminalBuffer = new Fl_Text_Buffer();
+    wTerminal->buffer(terminalBuffer);
+
     // load calibration data from last session
     //loadCalibration();
 
@@ -323,8 +417,16 @@ int main(int argc, char** argv)
 
     win->show(argc, argv);
     win->callback(quitCB);
-    wTerminal->append("Welcome to Jaq\n");
+    
+    // Welcome message
+    logToTerminal("=== JAQ ROBOT CONTROL APPLICATION ===");
+    logToTerminal("Enter serial port name and click 'Open' to connect");
+    logToTerminal("Example ports: /dev/ttyUSB0, /dev/ttyACM0 (Linux/macOS)");
+    
     Fl::lock();
     Fl::run();
+    
+    // Cleanup
+    delete terminalBuffer;
     return 0;
 }

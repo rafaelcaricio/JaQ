@@ -1,0 +1,28 @@
+.local.json
+
+# CMake build artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Compiled binaries and executables
+*.app/
+protocol_test
+servo_diagnostics
+*.o
+*.exe
+
+# Generated UI files (from FLTK .fl files)
+JaqUI.cxx
+JaqUI.h
+
+# IDE and editor files
+.claude/
+.vscode/
+.DS_Store
+
+# Platform-specific
+*.dylib
+*.so
+*.dll
